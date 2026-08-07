@@ -151,26 +151,57 @@
         if(idx !== -1) pool.push({doc: id, chunk: c, idx});
       });
     });
-    meta.textContent = `${pool.length} match${pool.length===1?'':'es'} for "${query}"`;
-    results.innerHTML = pool.slice(0, 40).map(({doc, chunk, idx}) => {
+    meta.textContent = `${pool.length} match${pool.length===1?'':'es'} for "${query}"${pool.length ? ' — click a result to read the full passage' : ''}`;
+    const re = new RegExp('(' + query.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'ig');
+
+    results.innerHTML = pool.slice(0, 40).map(({doc, chunk, idx}, i) => {
       const start = Math.max(0, idx - 80);
       const end = Math.min(chunk.text.length, idx + q.length + 120);
-      let snippet = chunk.text.slice(start, end);
-      snippet = escapeHtml(snippet);
-      const re = new RegExp('(' + query.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'ig');
-      snippet = snippet.replace(re, '<mark>$1</mark>');
+      let snippet = escapeHtml(chunk.text.slice(start, end)).replace(re, '<mark>$1</mark>');
       const label = DOC_META[doc].title;
       return `
-        <div class="result-item">
+        <div class="result-item" data-rid="${i}" data-doc="${doc}" data-cid="${chunk.id}" tabindex="0" role="button" aria-expanded="false">
           <div class="result-meta">
             <span class="badge">${label}</span>
             <span class="pageref">p. ${chunk.pages[0]}${chunk.pages[1]!==chunk.pages[0] ? '–'+chunk.pages[1] : ''}</span>
+            <span class="expand-hint">Click to expand ▾</span>
           </div>
           ${chunk.heading ? `<p class="result-heading">${escapeHtml(chunk.heading)}</p>` : ''}
           <p class="result-text">&hellip;${snippet}&hellip;</p>
         </div>
       `;
     }).join('') || '<p class="patch-hint">No matches. Try a shorter or different term.</p>';
+
+    results.querySelectorAll('.result-item').forEach(item => {
+      item.addEventListener('click', () => toggleResultExpand(item, re));
+      item.addEventListener('keydown', e => {
+        if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggleResultExpand(item, re); }
+      });
+    });
+  }
+
+  function toggleResultExpand(item, highlightRe){
+    const isOpen = item.classList.contains('expanded');
+    if(isOpen){
+      item.classList.remove('expanded');
+      item.setAttribute('aria-expanded', 'false');
+      item.querySelector('.expand-hint').textContent = 'Click to expand ▾';
+      return;
+    }
+    const doc = item.dataset.doc, cid = item.dataset.cid;
+    const chunk = state.docs[doc].chunks.find(c => c.id === cid);
+    if(!chunk) return;
+    let full = escapeHtml(chunk.text).replace(highlightRe, '<mark>$1</mark>');
+    let full3 = item.querySelector('.result-full');
+    if(!full3){
+      full3 = document.createElement('div');
+      full3.className = 'result-full';
+      item.appendChild(full3);
+    }
+    full3.innerHTML = `<p class="ch-pages">Full chunk ${chunk.id} &middot; ${chunk.text.split(/\s+/).filter(Boolean).length} words</p><p>${full}</p>`;
+    item.classList.add('expanded');
+    item.setAttribute('aria-expanded', 'true');
+    item.querySelector('.expand-hint').textContent = 'Click to collapse ▴';
   }
 
   // ---------- Patch bay ----------
@@ -231,18 +262,41 @@
     const detail = document.getElementById('patch-detail');
     detail.innerHTML = `
       <div class="patch-compare">
-        <div class="patch-compare-col">
+        <div class="patch-compare-col" data-doc="telviva" data-cid="${entry.telviva.id}">
           <h4>Telviva 4.2</h4>
           <span class="pageref">p. ${entry.telviva.pages[0]}${entry.telviva.pages[1]!==entry.telviva.pages[0] ? '–'+entry.telviva.pages[1] : ''}${entry.telviva.heading ? ' &middot; ' + escapeHtml(entry.telviva.heading) : ''}</span>
-          <p>&hellip;${escapeHtml(entry.telviva.excerpt)}&hellip;</p>
+          <p class="patch-excerpt">&hellip;${escapeHtml(entry.telviva.excerpt)}&hellip;</p>
+          <button class="btn-expand" type="button">Show full chunk ▾</button>
         </div>
-        <div class="patch-compare-col">
+        <div class="patch-compare-col" data-doc="queuemetrics" data-cid="${entry.queuemetrics.id}">
           <h4>QueueMetrics 26.01</h4>
           <span class="pageref">p. ${entry.queuemetrics.pages[0]}${entry.queuemetrics.pages[1]!==entry.queuemetrics.pages[0] ? '–'+entry.queuemetrics.pages[1] : ''}${entry.queuemetrics.heading ? ' &middot; ' + escapeHtml(entry.queuemetrics.heading) : ''}</span>
-          <p>&hellip;${escapeHtml(entry.queuemetrics.excerpt)}&hellip;</p>
+          <p class="patch-excerpt">&hellip;${escapeHtml(entry.queuemetrics.excerpt)}&hellip;</p>
+          <button class="btn-expand" type="button">Show full chunk ▾</button>
         </div>
       </div>
     `;
+    detail.querySelectorAll('.btn-expand').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const col = btn.closest('.patch-compare-col');
+        const doc = col.dataset.doc, cid = col.dataset.cid;
+        const isOpen = col.classList.contains('expanded');
+        if(isOpen){
+          col.classList.remove('expanded');
+          col.querySelector('.patch-full')?.remove();
+          btn.textContent = 'Show full chunk ▾';
+          return;
+        }
+        const chunk = state.docs[doc].chunks.find(c => c.id === cid);
+        if(!chunk) return;
+        const full = document.createElement('div');
+        full.className = 'patch-full';
+        full.innerHTML = `<p>${escapeHtml(chunk.text)}</p>`;
+        col.insertBefore(full, btn);
+        col.classList.add('expanded');
+        btn.textContent = 'Hide full chunk ▴';
+      });
+    });
   }
 
   function debounce(fn, ms){
@@ -294,10 +348,11 @@
     const chunks = state.docs[state.chunkDoc].chunks;
     const c = chunks[idx];
     const detail = document.getElementById('chunk-detail');
+    // Full stored chunk text (no artificial cutoff) — scrolls internally if long, see CSS.
     detail.innerHTML = `
       ${c.heading ? `<p class="ch-heading">${escapeHtml(c.heading)}</p>` : `<p class="ch-heading">Chunk ${c.id}</p>`}
-      <span class="ch-pages">p. ${c.pages[0]}${c.pages[1]!==c.pages[0] ? '–'+c.pages[1] : ''} &middot; ${c.text.split(/\s+/).filter(Boolean).length} words</span>
-      <p class="ch-text">${escapeHtml(c.text.slice(0, 400))}${c.text.length > 400 ? '…' : ''}</p>
+      <span class="ch-pages">p. ${c.pages[0]}${c.pages[1]!==c.pages[0] ? '–'+c.pages[1] : ''} &middot; ${c.text.split(/\s+/).filter(Boolean).length} words &middot; id ${c.id}</span>
+      <div class="ch-text-scroll"><p class="ch-text">${escapeHtml(c.text)}</p></div>
     `;
   }
 
