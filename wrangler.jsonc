@@ -1,0 +1,10 @@
+{
+  // Project name — used to build your *.workers.dev / *.pages.dev subdomain
+  "name": "tvqm-site",
+  // Required by Wrangler; today's date is fine to use going forward
+  "compatibility_date": "2026-08-01",
+  // Tells Cloudflare this Worker serves static files only — no server code
+  "assets": {
+    "directory": "."
+  }
+}
