@@ -125,42 +125,46 @@
       <div class="insight-card">
         <div class="insight-card-head">
           <h3>Ask across documents</h3>
-          <span class="demo-badge">Demo output</span>
+          <span class="demo-badge live-badge">Live</span>
         </div>
-        <p class="insight-desc">Ask a question that spans both manuals. In Phase 2 this retrieves the top matching chunks and asks Claude to answer strictly from them, with citations back to page numbers.</p>
+        <p class="insight-desc">Ask a question that spans both manuals. This retrieves the top matching chunks and asks Claude to answer strictly from them, with citations back to page numbers.</p>
         <div class="ask-box">
           <select id="ask-preset">
-            <option value="">Choose a sample question&hellip;</option>
-            <option value="q1">How would a dropped call get investigated across both systems?</option>
-            <option value="q2">Where do Telviva and QueueMetrics both define &ldquo;queue&rdquo;, and do the definitions agree?</option>
-            <option value="q3">What configuration steps are shared between call recording in Telviva and QA review in QueueMetrics?</option>
+            <option value="">Choose a sample question, or type your own below…</option>
+            <option value="How would a dropped call get investigated across both systems?">How would a dropped call get investigated across both systems?</option>
+            <option value="Where do Telviva and QueueMetrics both define &quot;queue&quot;, and do the definitions agree?">Where do Telviva and QueueMetrics both define "queue", and do the definitions agree?</option>
+            <option value="What configuration steps are shared between call recording in Telviva and QA review in QueueMetrics?">What configuration steps are shared between call recording and QA review?</option>
           </select>
-          <button id="ask-run" class="btn-primary">Generate answer</button>
         </div>
+        <textarea id="ask-question" class="ask-textarea" placeholder="Or ask your own question about either manual…" rows="2"></textarea>
+        <button id="ask-run" class="btn-primary">Generate answer</button>
         <div id="ask-output" class="ai-output"></div>
+        <div id="ask-sources" class="ai-sources"></div>
       </div>
 
       <div class="insight-card">
         <div class="insight-card-head">
           <h3>Story Mode</h3>
-          <span class="demo-badge">Demo output</span>
+          <span class="demo-badge live-badge">Live</span>
         </div>
         <p class="insight-desc">Turns a cross-referenced cluster of chunks into a plain-language narrative &mdash; the same mechanic that, on a legal document set, would turn a folder of filings into a coherent case timeline.</p>
         <div class="ask-box">
           <select id="story-preset">
-            <option value="">Choose a cluster to narrate&hellip;</option>
-            <option value="s1">The life of a queued call</option>
-            <option value="s2">Setting up call recording, end to end</option>
+            <option value="">Choose a cluster to narrate, or type your own below…</option>
+            <option value="The life of a queued call, from arrival to answer to reporting">The life of a queued call, from arrival to answer to reporting</option>
+            <option value="Setting up call recording in Telviva through to QA review in QueueMetrics">Setting up call recording, end to end</option>
           </select>
-          <button id="story-run" class="btn-primary">Generate story</button>
         </div>
+        <textarea id="story-question" class="ask-textarea" placeholder="Or describe your own topic to narrate…" rows="2"></textarea>
+        <button id="story-run" class="btn-primary">Generate story</button>
         <div id="story-output" class="ai-output"></div>
+        <div id="story-sources" class="ai-sources"></div>
       </div>
     </div>
 
     <div class="phase2-note">
-      <h3>Making this live</h3>
-      <p>The panel above is intentionally static so this page is safe to host publicly with zero ongoing cost. To make it real, the browser needs to call a <strong>Cloudflare Worker</strong> (not the Claude API directly &mdash; direct browser calls would expose your API key and get blocked by CORS). The Worker holds the key server-side, retrieves the right chunks, and calls Claude on the page's behalf. That's the natural Phase 2 step once you're happy with this direction.</p>
+      <h3>How this works</h3>
+      <p>Each request retrieves the best-matching passages from both manuals (same mechanism as the Search tab), sends only those passages to Claude with instructions to answer strictly from them, and returns a real generated answer with page citations. Nothing is pre-written below this line.</p>
     </div>
   </section>
 

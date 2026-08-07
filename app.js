@@ -383,52 +383,63 @@
     `;
   }
 
-  // ---------- AI Insights (mocked, grounded in real page refs) ----------
-  const ASK_ANSWERS = {
-    q1: `Demo answer, grounded in the actual page references from this sandbox:
+  // ---------- AI Insights (real — calls /api/generate) ----------
+  function escapeHtmlInsights(s){ return escapeHtml(s); }
 
-A dropped call would first surface in Telviva's Active Calls / Call History view (Telviva 4.2, p.6–7), which records the extension, timestamp and disposition. Because both systems sit on the same Asterisk layer, the same call would also appear in QueueMetrics' queue-answer records around the "answered" definitions on p.174–175, letting you cross-check whether the queue engine ever offered the call to an agent before it dropped, or whether it was abandoned in queue.
+  function renderSources(el, sources){
+    if(!sources || !sources.length){ el.innerHTML = ''; return; }
+    el.innerHTML = '<p class="sources-label">Sources used:</p>' + sources.map(s => {
+      const pages = s.pages[1] !== s.pages[0] ? `${s.pages[0]}–${s.pages[1]}` : `${s.pages[0]}`;
+      return `<span class="source-chip">${escapeHtml(s.label)} p.${pages}${s.heading ? ' · ' + escapeHtml(s.heading) : ''}</span>`;
+    }).join('');
+  }
 
-`,
-    q2: `Demo answer:
-
-Both manuals define "queue" independently — Telviva 4.2 covers it operationally around p.53 (as a call-routing destination), while QueueMetrics defines it analytically around p.391 (as a reporting unit with SLA and answer-time metrics). They describe the same underlying Asterisk queue object from two angles: one configures it, the other measures it. A live version of this feature would pull both chunks verbatim and ask Claude to reconcile the definitions explicitly, flagging any terminology drift.
-
-`,
-    q3: `Demo answer:
-
-Telviva's call-recording setup (p.34–36) controls whether a call is captured at all; QueueMetrics' QA workflow (p.516–518) is where that recording gets reviewed and scored. The shared thread is the recording file itself — Telviva produces it, QueueMetrics consumes it for quality assurance. A live version would show the actual configuration fields side by side and flag where naming conventions need to match for QueueMetrics to find Telviva's recordings automatically.
-
-`
-  };
-
-  const STORY_ANSWERS = {
-    s1: `Demo narrative, Phase 1 preview:
-
-A call arrives and, per Telviva 4.2, is offered to a queue (p.53). If no agent is free, it waits — and that wait is exactly what QueueMetrics is built to measure (p.391), tracking hold time against SLA thresholds. If an agent answers, Telviva logs it in Call History (p.11–12) while QueueMetrics simultaneously logs it as an "answered" event (p.174–175) for reporting. Two systems, one call, two vantage points — which is the whole premise of cross-referencing this document set instead of reading each manual in isolation.
-
-`,
-    s2: `Demo narrative:
-
-It starts in Telviva, where recording is enabled per extension or queue (p.34–36). From there, the file lands wherever QueueMetrics is configured to look for it (server settings, p.520), and once ingested it becomes reviewable in QueueMetrics' QA module (p.516–518) — scored, annotated, and rolled into agent performance reports (p.59–61). The "story" is really a supply chain: Telviva produces the raw material, QueueMetrics refines it into insight.
-
-`
-  };
+  async function runGenerate(question, mode, outputEl, sourcesEl, button){
+    if(!question || !question.trim()){
+      outputEl.textContent = 'Type a question or choose a sample first.';
+      sourcesEl.innerHTML = '';
+      return;
+    }
+    button.disabled = true;
+    outputEl.textContent = 'Retrieving relevant passages and asking Claude…';
+    sourcesEl.innerHTML = '';
+    try{
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ question: question.trim(), mode })
+      });
+      const data = await res.json();
+      if(!res.ok || data.error){
+        outputEl.textContent = 'Error: ' + (data.error || 'Something went wrong.');
+        return;
+      }
+      outputEl.textContent = data.answer;
+      renderSources(sourcesEl, data.sources);
+    } catch(e){
+      outputEl.textContent = 'Network error reaching /api/generate. If this site was deployed via Direct Upload rather than Git, functions/ may not have been included — check the deployment includes the functions folder.';
+    } finally {
+      button.disabled = false;
+    }
+  }
 
   function initInsights(){
-    document.getElementById('ask-run').addEventListener('click', () => {
-      const val = document.getElementById('ask-preset').value;
-      const out = document.getElementById('ask-output');
-      if(!val){ out.textContent = 'Choose a question first.'; return; }
-      out.textContent = 'Generating…';
-      setTimeout(() => { out.textContent = ASK_ANSWERS[val]; }, 500);
+    const askPreset = document.getElementById('ask-preset');
+    const askQuestion = document.getElementById('ask-question');
+    const askOut = document.getElementById('ask-output');
+    const askSources = document.getElementById('ask-sources');
+    askPreset.addEventListener('change', () => { if(askPreset.value) askQuestion.value = askPreset.value; });
+    document.getElementById('ask-run').addEventListener('click', (e) => {
+      runGenerate(askQuestion.value, 'answer', askOut, askSources, e.currentTarget);
     });
-    document.getElementById('story-run').addEventListener('click', () => {
-      const val = document.getElementById('story-preset').value;
-      const out = document.getElementById('story-output');
-      if(!val){ out.textContent = 'Choose a cluster first.'; return; }
-      out.textContent = 'Generating…';
-      setTimeout(() => { out.textContent = STORY_ANSWERS[val]; }, 500);
+
+    const storyPreset = document.getElementById('story-preset');
+    const storyQuestion = document.getElementById('story-question');
+    const storyOut = document.getElementById('story-output');
+    const storySources = document.getElementById('story-sources');
+    storyPreset.addEventListener('change', () => { if(storyPreset.value) storyQuestion.value = storyPreset.value; });
+    document.getElementById('story-run').addEventListener('click', (e) => {
+      runGenerate(storyQuestion.value, 'story', storyOut, storySources, e.currentTarget);
     });
   }
 
