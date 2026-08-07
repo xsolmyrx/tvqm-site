@@ -16,6 +16,7 @@
   --brass:#C68E4E;
   --brass-bright:#E0AC6C;
   --teal:#4FA6A0;
+  --violet:#8B7FD1;
   --paper:#EDE7DC;
   --muted:#8A97A0;
   --line:#2A343B;
@@ -190,6 +191,48 @@ main{position:relative; z-index:1; max-width:1180px; margin:0 auto; padding:0 24
 .cable-path.active{stroke:var(--brass); stroke-width:2.5;}
 .patch-detail{margin-top:22px;}
 .patch-hint{color:var(--muted); font-size:0.9rem; font-style:italic;}
+
+/* ===== Concept Graph ===== */
+.graph-legend{
+  display:flex; flex-wrap:wrap; gap:16px; align-items:center; margin-bottom:16px;
+  font-family:var(--font-mono); font-size:0.78rem; color:var(--muted);
+}
+.graph-legend span{display:inline-flex; align-items:center; gap:6px;}
+.graph-legend .dot{width:10px; height:10px; border-radius:50%; display:inline-block;}
+.dot-shared{background:var(--teal);}
+.dot-tv{background:var(--brass);}
+.dot-qm{background:var(--violet);}
+.graph-legend-sep{opacity:0.4;}
+.edge-sample{width:20px; height:0; border-top:2px solid var(--teal); display:inline-block;}
+.edge-sample.edge-same{border-top:1px dashed var(--line);}
+.graph-wrap{
+  background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:10px;
+  margin-bottom:18px;
+}
+#concept-svg{width:100%; height:auto; min-height:340px; display:block;}
+.graph-edge{stroke:var(--line); transition:stroke .15s ease, stroke-width .15s ease;}
+.graph-edge.edge-cross{stroke:rgba(79,166,160,0.35);}
+.graph-edge.edge-same{stroke:rgba(138,151,160,0.2); stroke-dasharray:3 3;}
+.graph-edge.active{stroke:var(--brass-bright) !important; stroke-width:2.5 !important; stroke-dasharray:none !important;}
+.graph-node{cursor:pointer;}
+.graph-node .node-circle{
+  fill:var(--panel-2); stroke:var(--brass); stroke-width:1.5; transition:all .15s ease;
+}
+.graph-node.kind-shared .node-circle{stroke:var(--teal); fill:rgba(79,166,160,0.15);}
+.graph-node.kind-telviva .node-circle{stroke:var(--brass); fill:rgba(198,142,78,0.12);}
+.graph-node.kind-queuemetrics .node-circle{stroke:var(--violet); fill:rgba(139,127,209,0.12);}
+.graph-node .node-label{
+  font-family:var(--font-mono); font-size:9px; fill:var(--muted); pointer-events:none;
+}
+.graph-node:hover .node-circle, .graph-node.active .node-circle{
+  fill:var(--brass); stroke:var(--brass-bright);
+}
+.graph-node:hover .node-label, .graph-node.active .node-label{fill:var(--paper); font-weight:600;}
+.graph-node:focus-visible .node-circle{outline:2px solid var(--teal);}
+.graph-detail{background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:16px;}
+.graph-detail-head{
+  font-family:var(--font-display); font-weight:700; color:var(--brass-bright); font-size:1.05rem; margin:0 0 12px;
+}
 .patch-compare{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
 .patch-compare-col{background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--teal); border-radius:4px; padding:16px;}
 .patch-compare-col h4{
@@ -246,6 +289,7 @@ main{position:relative; z-index:1; max-width:1180px; margin:0 auto; padding:0 24
 
 /* ===== AI insights ===== */
 .insight-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(340px,1fr)); gap:20px; margin-bottom:32px;}
+.insight-card-wide{grid-column:1 / -1;}
 .insight-card{background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:20px;}
 .insight-card-head{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px;}
 .insight-card h3{font-family:var(--font-display); font-size:1.2rem; margin:0;}

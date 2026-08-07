@@ -24,16 +24,18 @@
 
   // ---------- Data loading ----------
   async function loadData(){
-    const [tv, qm, cr, images] = await Promise.all([
+    const [tv, qm, cr, images, graph] = await Promise.all([
       fetch('data/telviva.json').then(r => r.json()),
       fetch('data/queuemetrics.json').then(r => r.json()),
       fetch('data/crossref.json').then(r => r.json()),
-      fetch('data/images-manifest.json').then(r => r.json())
+      fetch('data/images-manifest.json').then(r => r.json()),
+      fetch('data/concept-graph.json').then(r => r.json())
     ]);
     state.docs.telviva = { meta: DOC_META.telviva, chunks: tv };
     state.docs.queuemetrics = { meta: DOC_META.queuemetrics, chunks: qm };
     state.crossref = cr;
     state.images = images; // { telviva: {"41": "images/telviva/p041.jpg", ...}, queuemetrics: {...} }
+    state.graph = graph; // { nodes: [...], edges: [...] }
   }
 
   // Find the best associated screenshot for a chunk, checking every page it spans.
@@ -383,7 +385,87 @@
     `;
   }
 
-  // ---------- AI Insights (real — calls /api/generate) ----------
+  // ---------- Concept Graph ----------
+  function renderConceptGraph(){
+    const svg = document.getElementById('concept-svg');
+    const { nodes, edges } = state.graph;
+    const nodeById = {};
+    nodes.forEach(n => nodeById[n.id] = n);
+
+    const maxSize = Math.max(...nodes.map(n => n.size));
+    const radius = n => 8 + (n.size / maxSize) * 20;
+
+    let edgeSvg = '';
+    edges.forEach(e => {
+      const a = nodeById[e.a], b = nodeById[e.b];
+      if(!a || !b) return;
+      const w = 0.6 + Math.min(e.w, 8) * 0.35;
+      edgeSvg += `<line class="graph-edge ${e.cross ? 'edge-cross' : 'edge-same'}" data-a="${e.a}" data-b="${e.b}"
+        x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke-width="${w}"/>`;
+    });
+
+    let nodeSvg = '';
+    nodes.forEach(n => {
+      const r = radius(n);
+      nodeSvg += `<g class="graph-node kind-${n.kind}" data-id="${n.id}" tabindex="0" role="button" transform="translate(${n.x},${n.y})">
+        <circle r="${r}" class="node-circle"></circle>
+        <text class="node-label" y="${r + 13}" text-anchor="middle">${escapeHtml(n.id)}</text>
+      </g>`;
+    });
+
+    svg.innerHTML = `<g class="edges-layer">${edgeSvg}</g><g class="nodes-layer">${nodeSvg}</g>`;
+
+    svg.querySelectorAll('.graph-node').forEach(g => {
+      g.addEventListener('click', () => selectConceptNode(g.dataset.id));
+      g.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); selectConceptNode(g.dataset.id); } });
+    });
+  }
+
+  function selectConceptNode(term){
+    const svg = document.getElementById('concept-svg');
+    svg.querySelectorAll('.graph-node').forEach(g => g.classList.toggle('active', g.dataset.id === term));
+    svg.querySelectorAll('.graph-edge').forEach(l => {
+      l.classList.toggle('active', l.dataset.a === term || l.dataset.b === term);
+    });
+
+    // Find every chunk in either doc that actually contains this term (whole word).
+    const re = new RegExp('\\b' + term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\w*\\b', 'i');
+    const hits = [];
+    Object.entries(state.docs).forEach(([doc, d]) => {
+      d.chunks.forEach(c => { if(re.test(c.text)) hits.push({ doc, chunk: c }); });
+    });
+
+    const detail = document.getElementById('graph-detail');
+    const tvCount = hits.filter(h => h.doc === 'telviva').length;
+    const qmCount = hits.filter(h => h.doc === 'queuemetrics').length;
+    const highlightRe = new RegExp('(' + term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\w*)', 'ig');
+
+    detail.innerHTML = `
+      <p class="graph-detail-head">"${escapeHtml(term)}" &middot; ${tvCount} passage${tvCount===1?'':'s'} in Telviva, ${qmCount} in QueueMetrics</p>
+      <div class="search-results" id="graph-results"></div>
+    `;
+    const resultsEl = document.getElementById('graph-results');
+    resultsEl.innerHTML = hits.slice(0, 20).map((h, i) => {
+      const c = h.chunk;
+      const snippet = escapeHtml(c.text.slice(0, 200)).replace(highlightRe, '<mark>$1</mark>');
+      return `
+        <div class="result-item" data-doc="${h.doc}" data-cid="${c.id}" tabindex="0" role="button" aria-expanded="false">
+          <div class="result-meta">
+            <span class="badge">${DOC_META[h.doc].title}</span>
+            <span class="pageref">p. ${c.pages[0]}${c.pages[1]!==c.pages[0] ? '–'+c.pages[1] : ''}</span>
+            <span class="expand-hint">Click to expand ▾</span>
+          </div>
+          ${c.heading ? `<p class="result-heading">${escapeHtml(c.heading)}</p>` : ''}
+          <p class="result-text">${snippet}&hellip;</p>
+        </div>
+      `;
+    }).join('') || '<p class="patch-hint">No direct matches found in the chunked text.</p>';
+
+    resultsEl.querySelectorAll('.result-item').forEach(item => {
+      item.addEventListener('click', () => toggleResultExpand(item, highlightRe));
+      item.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggleResultExpand(item, highlightRe); } });
+    });
+  }
   function escapeHtmlInsights(s){ return escapeHtml(s); }
 
   function renderSources(el, sources){
@@ -465,6 +547,15 @@
     document.getElementById('story-run').addEventListener('click', (e) => {
       runGenerate(storyQuestion.value, 'story', storyOut, storySources, e.currentTarget);
     });
+
+    const conflictPreset = document.getElementById('conflict-preset');
+    const conflictQuestion = document.getElementById('conflict-question');
+    const conflictOut = document.getElementById('conflict-output');
+    const conflictSources = document.getElementById('conflict-sources');
+    conflictPreset.addEventListener('change', () => { if(conflictPreset.value) conflictQuestion.value = conflictPreset.value; });
+    document.getElementById('conflict-run').addEventListener('click', (e) => {
+      runGenerate(conflictQuestion.value, 'conflict', conflictOut, conflictSources, e.currentTarget);
+    });
   }
 
   // ---------- Init ----------
@@ -476,6 +567,7 @@
     renderLibrary();
     initSearch();
     renderPatchbay();
+    renderConceptGraph();
     initChunkExplorer();
     initInsights();
   }
