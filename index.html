@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -28,6 +29,7 @@
       <button class="tab" data-view="brief">Brief Generator</button>
       <button class="tab" data-view="chunks">Chunk Explorer</button>
       <button class="tab" data-view="insights">AI Insights</button>
+      <button class="tab" data-view="binder">Binder <span class="tab-badge" id="binder-count" hidden>0</span></button>
     </nav>
   </div>
 </header>
@@ -268,6 +270,31 @@
     <div class="phase2-note">
       <h3>How this works</h3>
       <p>Each request retrieves the best-matching passages from both manuals (same mechanism as the Search tab), sends only those passages to Claude with instructions to answer strictly from them, and returns a real generated answer with page citations. Nothing is pre-written below this line.</p>
+    </div>
+  </section>
+
+  <!-- BINDER -->
+  <section class="view" id="view-binder">
+    <div class="section-head">
+      <h2>Binder</h2>
+      <p>Collect excerpts from anywhere in this site &mdash; Search, Chunk Explorer, Patch Bay, Concept Graph, or any AI Insights citation &mdash; into one ordered bundle, then export it as a real PDF. On a real case file, this is how you'd assemble an exhibit bundle from scattered documents.</p>
+    </div>
+    <p class="drafting-note">The exported PDF is a compilation of excerpts you selected, with citations &mdash; it is not a legal filing and hasn't been reviewed for accuracy or completeness. Verify everything against the original documents.</p>
+
+    <div class="binder-controls">
+      <input type="text" id="binder-title" class="binder-title-input" placeholder="Bundle title (e.g. &quot;Call Recording — Exhibit Bundle&quot;)" value="Excerpt Bundle">
+      <button id="binder-export" class="btn-primary">Export PDF</button>
+      <button id="binder-clear" class="btn-secondary">Clear binder</button>
+    </div>
+
+    <div id="binder-table-wrap">
+      <p class="patch-hint" id="binder-empty">Nothing added yet. Look for "＋ Add to Binder" wherever you expand a passage &mdash; Search results, Chunk Explorer, Patch Bay, Concept Graph, or any citation chip.</p>
+      <table class="binder-table" id="binder-table" hidden>
+        <thead>
+          <tr><th></th><th>Document</th><th>Pages</th><th>Excerpt</th><th></th></tr>
+        </thead>
+        <tbody id="binder-tbody"></tbody>
+      </table>
     </div>
   </section>
 

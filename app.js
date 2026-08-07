@@ -6,7 +6,8 @@
     crossref: [],
     searchDocFilter: "all",
     chunkDoc: "telviva",
-    activeTerm: null
+    activeTerm: null,
+    binder: []
   };
 
   const DOC_META = {
@@ -226,7 +227,8 @@
       full3.className = 'result-full';
       item.appendChild(full3);
     }
-    full3.innerHTML = `<p class="ch-pages">Full chunk ${chunk.id} &middot; ${chunk.text.split(/\s+/).filter(Boolean).length} words</p>${imageBlockHtml(doc, chunk, DOC_META[doc].title)}<p>${full}</p>`;
+    full3.innerHTML = `<p class="ch-pages">Full chunk ${chunk.id} &middot; ${chunk.text.split(/\s+/).filter(Boolean).length} words</p>${imageBlockHtml(doc, chunk, DOC_META[doc].title)}<p>${full}</p>${binderButtonHtml(doc, chunk.id)}`;
+    wireBinderButtons(full3);
     item.classList.add('expanded');
     item.setAttribute('aria-expanded', 'true');
     item.querySelector('.expand-hint').textContent = 'Click to collapse ▴';
@@ -319,7 +321,8 @@
         if(!chunk) return;
         const full = document.createElement('div');
         full.className = 'patch-full';
-        full.innerHTML = `${imageBlockHtml(doc, chunk, DOC_META[doc].title)}<p>${escapeHtml(chunk.text)}</p>`;
+        full.innerHTML = `${imageBlockHtml(doc, chunk, DOC_META[doc].title)}<p>${escapeHtml(chunk.text)}</p>${binderButtonHtml(doc, chunk.id)}`;
+        wireBinderButtons(full);
         col.insertBefore(full, btn);
         col.classList.add('expanded');
         btn.textContent = 'Hide full chunk ▴';
@@ -382,7 +385,9 @@
       <span class="ch-pages">p. ${c.pages[0]}${c.pages[1]!==c.pages[0] ? '–'+c.pages[1] : ''} &middot; ${c.text.split(/\s+/).filter(Boolean).length} words &middot; id ${c.id}</span>
       ${imageBlockHtml(state.chunkDoc, c, DOC_META[state.chunkDoc].title)}
       <div class="ch-text-scroll"><p class="ch-text">${escapeHtml(c.text)}</p></div>
+      ${binderButtonHtml(state.chunkDoc, c.id)}
     `;
+    wireBinderButtons(detail);
   }
 
   // ---------- Concept Graph ----------
@@ -467,6 +472,204 @@
     });
   }
 
+  // ---------- Binder ----------
+  function binderButtonHtml(doc, chunkId){
+    return `<button type="button" class="btn-add-binder" data-doc="${doc}" data-cid="${escapeHtml(chunkId)}">＋ Add to Binder</button>`;
+  }
+
+  function wireBinderButtons(container){
+    container.querySelectorAll('.btn-add-binder').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        addToBinder(btn.dataset.doc, btn.dataset.cid);
+        btn.textContent = 'Added ✓';
+        btn.classList.add('added');
+        btn.disabled = true;
+        setTimeout(() => { btn.textContent = '＋ Add to Binder'; btn.classList.remove('added'); btn.disabled = false; }, 1200);
+      });
+    });
+  }
+
+  function addToBinder(doc, chunkId){
+    if(!doc || !chunkId) return;
+    if(state.binder.find(b => b.doc === doc && b.id === chunkId)) return;
+    state.binder.push({ doc, id: chunkId });
+    saveBinder();
+    renderBinderTable();
+    updateBinderBadge();
+  }
+
+  function removeFromBinder(doc, chunkId){
+    state.binder = state.binder.filter(b => !(b.doc === doc && b.id === chunkId));
+    saveBinder();
+    renderBinderTable();
+    updateBinderBadge();
+  }
+
+  function moveBinderItem(idx, dir){
+    const newIdx = idx + dir;
+    if(newIdx < 0 || newIdx >= state.binder.length) return;
+    const tmp = state.binder[idx];
+    state.binder[idx] = state.binder[newIdx];
+    state.binder[newIdx] = tmp;
+    saveBinder();
+    renderBinderTable();
+  }
+
+  function saveBinder(){
+    try{ localStorage.setItem('tvqm-binder', JSON.stringify(state.binder)); } catch(e){}
+  }
+
+  function loadBinder(){
+    try{
+      const raw = localStorage.getItem('tvqm-binder');
+      state.binder = raw ? JSON.parse(raw) : [];
+    } catch(e){ state.binder = []; }
+  }
+
+  function updateBinderBadge(){
+    const badge = document.getElementById('binder-count');
+    badge.textContent = state.binder.length;
+    badge.hidden = state.binder.length === 0;
+  }
+
+  function renderBinderTable(){
+    const table = document.getElementById('binder-table');
+    const tbody = document.getElementById('binder-tbody');
+    const empty = document.getElementById('binder-empty');
+    if(state.binder.length === 0){
+      table.hidden = true; empty.hidden = false;
+      return;
+    }
+    table.hidden = false; empty.hidden = true;
+    tbody.innerHTML = state.binder.map((b, i) => {
+      const chunk = state.docs[b.doc] && state.docs[b.doc].chunks.find(c => c.id === b.id);
+      if(!chunk) return '';
+      const pages = chunk.pages[1] !== chunk.pages[0] ? `${chunk.pages[0]}–${chunk.pages[1]}` : `${chunk.pages[0]}`;
+      const preview = escapeHtml(chunk.text.slice(0,140)) + (chunk.text.length>140?'…':'');
+      return `
+        <tr data-idx="${i}">
+          <td class="binder-reorder">
+            <button type="button" class="binder-move" data-dir="-1" ${i===0?'disabled':''} title="Move up">↑</button>
+            <button type="button" class="binder-move" data-dir="1" ${i===state.binder.length-1?'disabled':''} title="Move down">↓</button>
+          </td>
+          <td>${escapeHtml(DOC_META[b.doc].title)}</td>
+          <td>p. ${pages}</td>
+          <td class="binder-preview">${preview}</td>
+          <td><button type="button" class="binder-remove" title="Remove">✕</button></td>
+        </tr>
+      `;
+    }).join('');
+
+    tbody.querySelectorAll('tr').forEach(row => {
+      const idx = parseInt(row.dataset.idx, 10);
+      row.querySelectorAll('.binder-move').forEach(btn => {
+        btn.addEventListener('click', () => moveBinderItem(idx, parseInt(btn.dataset.dir, 10)));
+      });
+      row.querySelector('.binder-remove').addEventListener('click', () => {
+        removeFromBinder(state.binder[idx].doc, state.binder[idx].id);
+      });
+    });
+  }
+
+  function exportBinderPdf(){
+    if(state.binder.length === 0){ alert('Binder is empty — add some excerpts first.'); return; }
+    if(!window.jspdf){ alert('PDF library failed to load — check your connection and try again.'); return; }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 50;
+    const maxWidth = pageWidth - margin * 2;
+    let y = margin;
+
+    const title = (document.getElementById('binder-title').value || 'Excerpt Bundle').trim();
+
+    function addFooter(){
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(140);
+      doc.text(`Generated by TVQM · ${new Date().toLocaleDateString()} · Drafting aid, not legal advice — verify against source documents.`, margin, pageHeight - 24);
+      doc.text(String(doc.internal.getNumberOfPages()), pageWidth - margin, pageHeight - 24, { align: 'right' });
+    }
+
+    function ensureSpace(needed){
+      if(y + needed > pageHeight - 50){
+        addFooter();
+        doc.addPage();
+        y = margin;
+      }
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.setTextColor(20);
+    const titleLines = doc.splitTextToSize(title, maxWidth);
+    doc.text(titleLines, margin, y + 10);
+    y += titleLines.length * 26 + 10;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(110);
+    doc.text(`Generated ${new Date().toLocaleString()} · ${state.binder.length} excerpt${state.binder.length===1?'':'s'} · Telviva Enswitch 4.2 & QueueMetrics 26.01`, margin, y);
+    y += 28;
+
+    doc.setDrawColor(210);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 24;
+
+    state.binder.forEach((b, i) => {
+      const chunk = state.docs[b.doc] && state.docs[b.doc].chunks.find(c => c.id === b.id);
+      if(!chunk) return;
+      const label = DOC_META[b.doc].title;
+      const pages = chunk.pages[1] !== chunk.pages[0] ? `${chunk.pages[0]}–${chunk.pages[1]}` : `${chunk.pages[0]}`;
+
+      const headTitle = `${i+1}. ${chunk.heading || 'Excerpt'}`;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      const headLines = doc.splitTextToSize(headTitle, maxWidth);
+      ensureSpace(headLines.length * 16 + 34);
+      doc.setTextColor(20);
+      doc.text(headLines, margin, y);
+      y += headLines.length * 16 + 4;
+
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(9);
+      doc.setTextColor(90);
+      doc.text(`${label} · p. ${pages} · chunk ${chunk.id}`, margin, y);
+      y += 16;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10.5);
+      doc.setTextColor(30);
+      const bodyLines = doc.splitTextToSize(chunk.text, maxWidth);
+      bodyLines.forEach(line => {
+        ensureSpace(15);
+        doc.text(line, margin, y);
+        y += 14;
+      });
+      y += 20;
+    });
+
+    addFooter();
+    const filename = title.replace(/[^a-z0-9]+/gi,'-').toLowerCase() + '.pdf';
+    doc.save(filename);
+  }
+
+  function initBinder(){
+    loadBinder();
+    updateBinderBadge();
+    renderBinderTable();
+    document.getElementById('binder-clear').addEventListener('click', () => {
+      if(state.binder.length && !confirm('Clear all excerpts from the binder?')) return;
+      state.binder = [];
+      saveBinder();
+      renderBinderTable();
+      updateBinderBadge();
+    });
+    document.getElementById('binder-export').addEventListener('click', exportBinderPdf);
+  }
+
   // ---------- Citation parsing (shared by Flow / Brief / Devil's Advocate) ----------
   function parseCitation(str){
     const m = str.match(/(Telviva|QueueMetrics)[^,]*,\s*p\.?\s*(\d+)/i);
@@ -502,7 +705,8 @@
         if(!found || !found.chunk){
           detail.innerHTML = `<p class="patch-hint">Could not locate this passage locally.</p>`;
         } else {
-          detail.innerHTML = `${imageBlockHtml(found.doc, found.chunk, DOC_META[found.doc].title)}<p class="source-detail-text">${escapeHtml(found.chunk.text)}</p>`;
+          detail.innerHTML = `${imageBlockHtml(found.doc, found.chunk, DOC_META[found.doc].title)}<p class="source-detail-text">${escapeHtml(found.chunk.text)}</p>${binderButtonHtml(found.doc, found.chunk.id)}`;
+          wireBinderButtons(detail);
         }
         chip.insertAdjacentElement('afterend', detail);
       });
@@ -682,7 +886,8 @@
       detail.innerHTML = '<p class="patch-hint">Could not find this passage in the loaded data.</p>';
       return;
     }
-    detail.innerHTML = `${imageBlockHtml(doc, chunk, DOC_META[doc].title)}<p class="source-detail-text">${escapeHtml(chunk.text)}</p>`;
+    detail.innerHTML = `${imageBlockHtml(doc, chunk, DOC_META[doc].title)}<p class="source-detail-text">${escapeHtml(chunk.text)}</p>${binderButtonHtml(doc, chunk.id)}`;
+    wireBinderButtons(detail);
   }
 
   async function runGenerate(question, mode, outputEl, sourcesEl, button){
@@ -755,7 +960,18 @@
   // ---------- Init ----------
   async function init(){
     initTabs();
-    await loadData();
+    try{
+      await loadData();
+    } catch(e){
+      document.querySelector('main').innerHTML = `
+        <div class="load-error">
+          <h2>Something failed to load</h2>
+          <p>One of the data files under <code>/data</code> didn't load correctly, so the app can't start. Open the browser console (F12) for the exact error — it'll usually say which file and why.</p>
+          <p class="load-error-detail">${escapeHtml(String(e && e.message || e))}</p>
+        </div>`;
+      console.error('TVQM init failed:', e);
+      return;
+    }
     renderHeroStats();
     renderHeroPatchbay();
     renderLibrary();
@@ -766,6 +982,7 @@
     initFlow();
     initBrief();
     initInsights();
+    initBinder();
   }
 
   document.addEventListener('DOMContentLoaded', init);
