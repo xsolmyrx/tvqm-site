@@ -53,10 +53,18 @@ async function retrieveTopChunks(env, request, question, topN = 6) {
   const scored = pool
     .map(p => ({ ...p, score: scoreChunk(queryWords, p.chunk) }))
     .filter(p => p.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topN);
+    .sort((a, b) => b.score - a.score);
 
-  return scored;
+  return { scored, tv, qm, queryWords };
+}
+
+// For conflict detection, we need guaranteed representation from BOTH docs —
+// a plain top-N merge could accidentally return six chunks from one manual
+// and none from the other, making conflict-finding impossible.
+function balancedTopChunks(scored, tv, qm, queryWords, perDoc = 4) {
+  const tvScored = scored.filter(p => p.doc === 'telviva').slice(0, perDoc);
+  const qmScored = scored.filter(p => p.doc === 'queuemetrics').slice(0, perDoc);
+  return [...tvScored, ...qmScored];
 }
 
 function buildContextBlock(results) {
@@ -69,7 +77,8 @@ function buildContextBlock(results) {
 
 const SYSTEM_PROMPTS = {
   answer: `You answer questions about two technical manuals: Telviva Enswitch 4.2 (a hosted PBX platform) and QueueMetrics 26.01 (call center analytics that sits on top of Asterisk-based queues). You will be given numbered excerpts pulled from both manuals along with their page numbers. Answer ONLY using information in these excerpts. Cite the source of each claim inline like (Telviva, p.34) or (QueueMetrics, p.516). If the excerpts don't contain enough information to answer, say so plainly rather than guessing. Keep the answer concise — a few sentences to a short paragraph. Write in plain, direct prose.`,
-  story: `You turn cross-referenced excerpts from two technical manuals (Telviva Enswitch 4.2, a hosted PBX platform, and QueueMetrics 26.01, call center analytics on Asterisk) into a short, coherent narrative that connects them — showing how something described in one system relates to or is measured by the other. Ground every claim in the provided excerpts and cite page numbers inline like (Telviva, p.34) or (QueueMetrics, p.516). Do not invent details not present in the excerpts. Keep it to one tight paragraph, written in plain, engaging prose — this is meant to help someone understand the full picture quickly, not to pad length.`
+  story: `You turn cross-referenced excerpts from two technical manuals (Telviva Enswitch 4.2, a hosted PBX platform, and QueueMetrics 26.01, call center analytics on Asterisk) into a short, coherent narrative that connects them — showing how something described in one system relates to or is measured by the other. Ground every claim in the provided excerpts and cite page numbers inline like (Telviva, p.34) or (QueueMetrics, p.516). Do not invent details not present in the excerpts. Keep it to one tight paragraph, written in plain, engaging prose — this is meant to help someone understand the full picture quickly, not to pad length.`,
+  conflict: `You are a conflict-detection reviewer comparing two technical manuals: Telviva Enswitch 4.2 (a hosted PBX platform) and QueueMetrics 26.01 (call center analytics on Asterisk). You will be given numbered excerpts from both. Your job is NOT to answer a question — it is to actively look for and report any of the following between the two documents on the given topic: (1) outright contradictions, (2) differing definitions of the same term, (3) mismatched terminology that could cause confusion, (4) gaps where one document assumes something the other doesn't establish. For each finding, state it plainly, cite both sides like (Telviva, p.34) vs (QueueMetrics, p.516), and briefly explain the practical consequence of the discrepancy. If you genuinely find no conflict on this topic — the documents agree or are simply complementary — say so directly and explain why they're consistent, do not manufacture a conflict that isn't there. Be concise: 2-4 findings maximum, each 1-2 sentences.`
 };
 
 export async function onRequestPost(context) {
@@ -89,7 +98,7 @@ export async function onRequestPost(context) {
   }
 
   const question = (body.question || '').trim();
-  const mode = body.mode === 'story' ? 'story' : 'answer';
+  const mode = ['story', 'conflict'].includes(body.mode) ? body.mode : 'answer';
   if (!question) {
     return new Response(JSON.stringify({ error: 'Missing question.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
   }
@@ -99,7 +108,8 @@ export async function onRequestPost(context) {
 
   let results;
   try {
-    results = await retrieveTopChunks(env, request, question);
+    const { scored, tv, qm, queryWords } = await retrieveTopChunks(env, request, question);
+    results = mode === 'conflict' ? balancedTopChunks(scored, tv, qm, queryWords) : scored.slice(0, 6);
   } catch (e) {
     return new Response(JSON.stringify({ error: 'Could not load document data for retrieval.' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
@@ -110,10 +120,18 @@ export async function onRequestPost(context) {
       sources: []
     }), { headers: { 'Content-Type': 'application/json' } });
   }
+  if (mode === 'conflict' && (!results.some(r => r.doc === 'telviva') || !results.some(r => r.doc === 'queuemetrics'))) {
+    return new Response(JSON.stringify({
+      answer: "This topic doesn't have strong enough coverage in both manuals to compare — I found passages in only one of them, so there's nothing to check for conflicts against. Try a topic you've seen appear in Patch Bay, which is pre-checked for cross-document coverage.",
+      sources: results.map(r => ({ doc: r.doc, label: DOC_LABELS[r.doc], pages: r.chunk.pages, heading: r.chunk.heading, id: r.chunk.id }))
+    }), { headers: { 'Content-Type': 'application/json' } });
+  }
 
   const contextBlock = buildContextBlock(results);
   const userMessage = mode === 'story'
     ? `Here are relevant excerpts:\n\n${contextBlock}\n\nWrite the connecting narrative for: ${question}`
+    : mode === 'conflict'
+    ? `Here are relevant excerpts from both manuals:\n\n${contextBlock}\n\nCheck for conflicts on this topic: ${question}`
     : `Here are relevant excerpts:\n\n${contextBlock}\n\nQuestion: ${question}`;
 
   let claudeRes;
