@@ -388,10 +388,34 @@
 
   function renderSources(el, sources){
     if(!sources || !sources.length){ el.innerHTML = ''; return; }
-    el.innerHTML = '<p class="sources-label">Sources used:</p>' + sources.map(s => {
-      const pages = s.pages[1] !== s.pages[0] ? `${s.pages[0]}–${s.pages[1]}` : `${s.pages[0]}`;
-      return `<span class="source-chip">${escapeHtml(s.label)} p.${pages}${s.heading ? ' · ' + escapeHtml(s.heading) : ''}</span>`;
-    }).join('');
+    el.innerHTML = '<p class="sources-label">Sources used — click to view the passage:</p>'
+      + '<div class="source-chip-row">' + sources.map((s, i) => {
+          const pages = s.pages[1] !== s.pages[0] ? `${s.pages[0]}–${s.pages[1]}` : `${s.pages[0]}`;
+          return `<button type="button" class="source-chip" data-doc="${s.doc}" data-cid="${escapeHtml(s.id)}">${escapeHtml(s.label)} p.${pages}${s.heading ? ' · ' + escapeHtml(s.heading) : ''}</button>`;
+        }).join('') + '</div>'
+      + '<div class="source-detail"></div>';
+
+    el.querySelectorAll('.source-chip').forEach(chip => {
+      chip.addEventListener('click', () => toggleSourceDetail(el, chip));
+    });
+  }
+
+  function toggleSourceDetail(container, chip){
+    const detail = container.querySelector('.source-detail');
+    const wasActive = chip.classList.contains('active');
+    container.querySelectorAll('.source-chip').forEach(c => c.classList.remove('active'));
+    if(wasActive){
+      detail.innerHTML = '';
+      return;
+    }
+    chip.classList.add('active');
+    const doc = chip.dataset.doc, cid = chip.dataset.cid;
+    const chunk = state.docs[doc] && state.docs[doc].chunks.find(c => c.id === cid);
+    if(!chunk){
+      detail.innerHTML = '<p class="patch-hint">Could not find this passage in the loaded data.</p>';
+      return;
+    }
+    detail.innerHTML = `${imageBlockHtml(doc, chunk, DOC_META[doc].title)}<p class="source-detail-text">${escapeHtml(chunk.text)}</p>`;
   }
 
   async function runGenerate(question, mode, outputEl, sourcesEl, button){
