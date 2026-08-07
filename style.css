@@ -164,6 +164,7 @@ main{position:relative; z-index:1; max-width:1180px; margin:0 auto; padding:0 24
   margin-top:12px; padding-top:12px; border-top:1px solid var(--line);
   font-size:0.88rem; color:var(--paper); opacity:0.9; line-height:1.6;
 }
+.result-item:not(.expanded) .result-full{display:none;}
 .result-full p:not(.ch-pages){white-space:pre-wrap;}
 
 /* ===== Patch bay ===== */
@@ -207,6 +208,7 @@ main{position:relative; z-index:1; max-width:1180px; margin:0 auto; padding:0 24
   margin:12px 0 0; padding-top:12px; border-top:1px solid var(--line);
   font-size:0.88rem; color:var(--paper); opacity:0.9; line-height:1.6; white-space:pre-wrap;
 }
+.patch-compare-col:not(.expanded) .patch-full{display:none;}
 
 /* ===== Chunk explorer ===== */
 .chunk-doc-select{display:flex; gap:8px; margin-bottom:18px;}

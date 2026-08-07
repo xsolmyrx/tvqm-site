@@ -186,6 +186,7 @@
       item.classList.remove('expanded');
       item.setAttribute('aria-expanded', 'false');
       item.querySelector('.expand-hint').textContent = 'Click to expand ▾';
+      item.querySelector('.result-full')?.remove();
       return;
     }
     const doc = item.dataset.doc, cid = item.dataset.cid;
